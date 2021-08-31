@@ -1,0 +1,27 @@
+index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*"
+| rename NODE as site
+| sort 0 -_time
+| eval site = substr (site,1,4) | replace "NodeB Unavail*" with "NE Is Disconnected", "Loss of supervision" with "NE Is Disconnected" IN ALERTGROUP
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area longitude latitude
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area),latitude = MVDEDUP (latitude), longitude = mvdedup (longitude)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN (NONE), NOT engineering_area IN (NONE)
+| lookup Mobile_Battery_Reserve.csv site OUTPUT "Battery Reserve" AS Battery_Reserve
+| lookup Mobile_Site_Category_Priority.csv site OUTPUT "Dynamic Priority" AS Priority, "Regional Rank" AS Regional_Rank, Remarks
+| rename site AS Site, description AS Site_Name, network AS Technology, engineering_area AS Region
+| replace Bronze with 4.Bronze, Silver with 3.Silver, Gold with 2.Gold, Platinum with 1.Platinum, Battery* with "Low Volts"
+| eval description= "<b>".Site_Name + " - "+ Site ."</b>" ."<br>"."Severity" + " - " + Priority. "<br>" ."Alert = " .ALERTGROUP . "<br>" ."Batt = " .Battery_Reserve . "<br>" ,
+	icon=case(ALERTGROUP LIKE "%Mains%","bolt",ALERTGROUP LIKE "%Low%","battery",ALERTGROUP LIKE "%Discon%","bullhorn",1=1,"question"),
+	markerColor=if(ALERTGROUP LIKE "%Mains%","blue",if(ALERTGROUP LIKE "%Low%","purple", if(ALERTGROUP LIKE "%Discon%","red","green"))),
+	markerPriority = if(ALERTGROUP LIKE "%Mains%","800",if(ALERTGROUP LIKE "%Low%","900",if(ALERTGROUP LIKE "%Discon%","1000","0"))),
+	markerSize = "17,37",
+    shadowSize = "20,36",
+    shadowAnchor = "17,32",
+    markerAnchor = "5,30",
+    markerType="svg",
+	layerDescription = ALERTGROUP
+| table latitude longitude Site description icon markerColor markerPriority markerSize shadowSize shadowAnchor markerAnchor markerType layerDescription Site_Name Region Priority  Battery_Reserve ALERTGROUP
+| fillnull
+| sort Priority

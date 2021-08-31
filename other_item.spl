@@ -1,0 +1,11 @@
+index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site
+| sort 0 -_time
+| eval site = substr (site,1,4)
+| replace *Mains* with AC_Mains_Fail, *Disconne* with Site_Offline, *Low* with Low_Volts, *Batt* with Low_Volts, "NodeB Unavail*" with Site_Offline, "Power Supply DC*" with Low_Volts IN ALERTGROUP
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+| lookup 3g_mobile_inventory.csv site OUTPUT  engineering_area
+| eval  engineering_area = mvdedup (engineering_area)
+| search ORIGINALSEVERITY !=1 NOT site IN (NONE), NOT engineering_area IN (NONE)
+| stats count(ALERTGROUP) by ALERTGROUP

@@ -1,0 +1,1170 @@
+<form theme="dark">
+  <!-- Revision History:
+        05.09.2020: IM : Created
+        06.09.2020: IM : Map Added, HTML Styling, add WBB users
+        07.09.2020: IM : Adding Mobile Users and PS Data Consumptions
+        08.09.2020: IM : Tidying Query, so no extra dbxquery. Added exclude filter
+        19.09.2020: IM : Add Region Filter as requested by boss, also add time picker
+        27.09.2020: IM : ammending the impact panels
+		09.10.2020: IM : ammending Risk vs OOS calculation
+        @Author: Irvino Moedjiono
+-->
+  <label>Major Mobile Power Outage - Netcool (in process of being replaced by REM)</label>
+  <description>Please use: https://splunk.internal.spark.co.nz/en-GB/app/mobile/major_mobile_power_outage_rem</description>
+  <fieldset submitButton="false" autoRun="false">
+    <input type="multiselect" token="excludesite" searchWhenChanged="true">
+      <label>Exclude Site(s)</label>
+      <delimiter>,</delimiter>
+      <fieldForLabel>site</fieldForLabel>
+      <fieldForValue>site</fieldForValue>
+      <search>
+        <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*"
+| rename NODE as site
+| eval site = substr (site,1,4)
+| sort 0 -_time
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+| search ORIGINALSEVERITY !=1
+| dedup site
+| table site</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <choice value="NONE">NONE</choice>
+      <default>NONE</default>
+      <initialValue>NONE</initialValue>
+    </input>
+    <input type="multiselect" token="region" searchWhenChanged="true">
+      <label>Exclude Region(s)</label>
+      <choice value="NONE">NONE</choice>
+      <default>NONE</default>
+      <delimiter>,</delimiter>
+      <fieldForLabel>Region</fieldForLabel>
+      <fieldForValue>Region</fieldForValue>
+      <search>
+        <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*"
+| rename NODE as site
+| sort 0 -_time
+| dedup site
+| eval site = substr (site,1,4)
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area AS Region
+| eval description = mvdedup (description), Region = mvdedup (Region)
+| search ORIGINALSEVERITY !=1
+| table Region
+|  dedup Region</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <initialValue>NONE</initialValue>
+    </input>
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Time</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Alarm Count by Site</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site
+| sort 0 -_time
+| eval site = substr (site,1,4)
+| replace *Mains* with AC_Mains_Fail, *Disconne* with Site_Offline, *Low* with Low_Volts, *Batt* with Low_Volts, "NodeB Unavail*" with Site_Offline, "Power Supply DC*" with Low_Volts IN ALERTGROUP
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+| lookup 3g_mobile_inventory.csv site OUTPUT  engineering_area
+| eval  engineering_area = mvdedup (engineering_area)
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| stats count(ALERTGROUP) by ALERTGROUP</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">128</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,12]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel"># of Site(s)</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Pie Chart by Region</title>
+      <chart>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT engineering_area
+| eval engineering_area = mvdedup (engineering_area)
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| rename engineering_area AS Region
+| stats count(Region) by Region</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">161</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>by Priority</title>
+      <chart>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT engineering_area
+| eval engineering_area = mvdedup (engineering_area)
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_Site_Category_Priority.csv site OUTPUT "Dynamic Priority" AS Priority
+| replace Bronze with 4.Bronze, Silver with 3.Silver, Gold with 2.Gold, Platinum with 1.Platinum
+| stats count(Priority) by Priority
+| sort Priority</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisLabelsY.majorUnit">1</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">136</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Prev. Day - Mobile Data (PS) Traffic - (excl. WBB) at RISK</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Total_Users
+| eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+| table site Total_Users  "Previous Day Data Traffic(GB)"
+| stats sum("Previous Day Data Traffic(GB)") as "Previous Day - Data Traffic(GB)"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>10m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">87</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xFF1493","0xFF0000"]</option>
+        <option name="rangeValues">[100,500,1000,2000]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Potential Mobile Data Traffic at Risk</option>
+        <option name="unit">GB</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Total Users (Mobile+WBB) at RISK</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+| lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+| eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+| eval Total_Users = Mobile_Users + WBB_Users
+| join type=left site
+    [search index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site
+    | sort 0 -_time
+    | dedup site
+    | eval site = substr (site,1,4)
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+    | eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+    | eval Total_Users_OOS = Mobile_Users + WBB_Users | table site Total_Users_OOS]
+| table site Total_Users Mobile_Users WBB_Users "Previous Day Mobile Data Traffic(GB)" Total_Users_OOS | fillnull
+| stats sum(Total_Users) as "Total_Users"  sum(Total_Users_OOS) as "Total_Users_OOS"
+| eval Total_Users_at_Risk = Total_Users - Total_Users_OOS
+| table Total_Users_at_Risk</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xFF1493"]</option>
+        <option name="rangeValues">[100,250,500]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Estimated Total Users (Mobile + WBB) at Risk</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Mobile Users at RISK</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+| lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+| eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+| eval Total_Users = Mobile_Users + WBB_Users
+| join type=left site
+    [ search index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site
+    | sort 0 -_time
+    | dedup site
+    | eval site = substr (site,1,4)
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users_OOS
+    | eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+    | table site Mobile_Users_OOS ]
+| table site Total_Users Mobile_Users WBB_Users "Previous Day Mobile Data Traffic(GB)" Mobile_Users_OOS | fillnull
+| stats sum(Mobile_Users) as "Mobile_Users" sum(Mobile_Users_OOS) as "Mobile_Users_OOS"
+| eval Mobile_Users_At_Risk = Mobile_Users - Mobile_Users_OOS
+| table Mobile_Users_At_Risk</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xFF1493"]</option>
+        <option name="rangeValues">[100,250,500]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Estimated Mobile Users at Risk</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>WBB Users at RISK</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+| rename NODE as site | eval site = substr (site,1,4)
+| sort 0 -_time
+| dedup site
+
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+| lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+| eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+| eval Total_Users = Mobile_Users + WBB_Users
+| join type=left site
+    [ search index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site
+    | sort 0 -_time
+    | dedup site
+    | eval site = substr (site,1,4)
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users AS WBB_Users_OOS
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users_OOS
+    | table site WBB_Users_OOS ]
+| table site Total_Users Mobile_Users WBB_Users "Previous Day Mobile Data Traffic(GB)" WBB_Users_OOS | fillnull
+| stats sum(WBB_Users) as "WBB_Users" sum(WBB_Users_OOS) as "WBB_Users_OOS"
+| eval WBB_Users_At_Risk = WBB_Users - WBB_Users_OOS
+| table WBB_Users_At_Risk</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xFF1493"]</option>
+        <option name="rangeValues">[100,250,500]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Estimated WBB Users at Risk</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Total Users (Mobile+WBB)  OUT OF SERVICES</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site    | eval site = substr (site,1,4)
+    | sort 0 -_time
+    | dedup site
+
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+    | eval "Previous Day Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+    | eval Total_Users_OOS = Mobile_Users + WBB_Users | append
+    [| makeresults
+    | eval Total_Users_OOS=0]
+    | stats sum(Total_Users_OOS) as "Total_Users_OOS"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Total User (Mobile + WBB) Out of Services</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Mobile Users  OUT OF SERVICES</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site     | eval site = substr (site,1,4)
+    | sort 0 -_time
+    | dedup site
+
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users_OOS | append
+    [| makeresults
+    | eval Mobile_Users_OOS=0]
+    | stats sum(Mobile_Users_OOS) as "Mobile_Users_OOS"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Total Mobile User Out of Services</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total WBB Users OUT OF SERVICES</title>
+      <single>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP = "NodeB Unavail*"
+    | rename NODE as site     | eval site = substr (site,1,4)
+    | sort 0 -_time
+    | dedup site
+
+    | lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+    | eval description = mvdedup (description), engineering_area = mvdedup (engineering_area)
+    | replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+    | search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+    | lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+    | lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users_OOS | append
+    [| makeresults
+    | eval WBB_Users=0]
+    | stats sum(WBB_Users) as "WBB_Users"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="underLabel">Total WBB User Out of Services</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$nothing$">
+      <title>HTML Styling</title>
+      <html>
+     <body>
+      <style>
+         #panel13 {
+          width: 30% !important;
+        }
+
+         #panel12 {
+        width: 70% !important;
+        }
+
+    </style>
+      </body>
+
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Alarm Details</title>
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*"
+| rename NODE as site
+| sort 0 -_time | eval site = substr (site,1,4)
+| replace *Mains* with AC_Mains_Fail, *Disconne* with Site_Offline, *Low* with Low_Volts, *Batt* with Low_Volts, "NodeB Unavail*" with Site_Offline, "Power Supply DC*" with Low_Volts IN ALERTGROUP
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area) , rnc = mvdedup (rnc), network = mvdedup (network)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| join type=left site
+    [ search index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*" OR SUMMARY="*DC Undervoltage*"
+      | rename NODE as site
+      | sort 0 -_time
+      | eval site = substr (site,1,4)
+
+      | search ORIGINALSEVERITY !=1
+      | rex mode=sed field=ALERTGROUP "s/ //g"
+      | stats list(ALERTGROUP) AS Alarm by site
+      | replace Battery* with "LowVolts", "NodeBUnavail*" with "NEIsDisconnected", "PowerSupplyDC*" with "LowVolts" IN Alarm
+      | sort Alarm]
+| makemv Alarm
+| eval AC_Mains_Fail =mvfilter(match(Alarm, "Mains"))
+| eval Low_Volts =mvfilter(match(Alarm, "Low"))
+| eval Site_Offline =mvfilter(match(Alarm, "Disconne"))
+| rename _time as Date
+| eval Date=strftime(Date, "%d/%m/%Y %H:%M:%S")
+| eval Low_Volts = if(isnull(Low_Volts) OR len(Low_Volts)==0, "", "Yes")
+| eval Site_Offline = if(isnull(Site_Offline) OR len(Site_Offline)==0, "", "Yes")
+| eval AC_Mains_Fail = if(isnull(AC_Mains_Fail) OR len(AC_Mains_Fail)==0, "", "Yes")
+| lookup Mobile_Battery_Reserve.csv site OUTPUT "Battery Reserve" AS Battery_Reserve
+| lookup Mobile_Site_Category_Priority.csv site OUTPUT "Dynamic Priority" AS Priority, "Regional Rank" AS Regional_Rank, Remarks
+| rename  description AS Site_Name, network AS Technology, engineering_area AS Region
+| replace Bronze with 4.Bronze, Silver with 3.Silver, Gold with 2.Gold, Platinum with 1.Platinum
+| lookup Mobile_WBB_Users_Daily.csv site OUTPUT WBB_Users
+| table Date rnc site Site_Name Technology Region Priority Regional_Rank WBB_Users Battery_Reserve AC_Mains_Fail Low_Volts Site_Offline Remarks
+| lookup Mobile_Number_of_User_Daily.csv CELL as site OUTPUT "LTE DATA (GB)" as LTE_Data_Daily, "3G DATA (GB)" as UMTS_Data_Daily, "TOTAL USERS" as Mobile_Users
+| eval "Previous Day Mobile Data Traffic(GB)" = LTE_Data_Daily + UMTS_Data_Daily
+| eval Total_Users = Mobile_Users + WBB_Users
+| table Date rnc site Site_Name Technology Region Priority Regional_Rank WBB_Users Mobile_Users "Previous Day Mobile Data Traffic(GB)"  Battery_Reserve AC_Mains_Fail Low_Volts Site_Offline Remarks
+| dedup site
+| fillnull VALUE="No Data"
+| sort Priority</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">50</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">true</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="WBB_Users">
+          <colorPalette type="list">[#3C444D,#DC4E41]</colorPalette>
+          <scale type="threshold">100</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="WBB_Users">
+          <colorPalette type="list">[#3C444D,#DC4E41]</colorPalette>
+          <scale type="threshold">100</scale>
+        </format>
+        <format type="color" field="Priority">
+          <colorPalette type="list">[#53A051,#006D9C,#F8BE34,#F1813F,#DC4E41]</colorPalette>
+          <scale type="threshold">0,30,70,100</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="WBB_Users">
+          <colorPalette type="list">[#3C444D,#DC4E41]</colorPalette>
+          <scale type="threshold">100</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="AC_Mains_Fail">
+          <colorPalette type="map">{"Yes":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Low_Volts">
+          <colorPalette type="map">{"Yes":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Site_Offline">
+          <colorPalette type="map">{"Yes":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Battery_Reserve">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#62B3B2,#53A051]</colorPalette>
+          <scale type="threshold">5,10,15</scale>
+        </format>
+        <format type="color" field="WBB_Users">
+          <colorPalette type="list">[#3C444D,#DC4E41]</colorPalette>
+          <scale type="threshold">100</scale>
+        </format>
+        <format type="color" field="Priority">
+          <colorPalette type="list">[#53A051,#006D9C,#F8BE34,#F1813F,#DC4E41]</colorPalette>
+          <scale type="threshold">0,30,70,100</scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Map</title>
+      <viz type="leaflet_maps_app.leaflet_maps">
+        <search>
+          <query>index=noc sourcetype = netcool_prod NODE=* EQUIPROLE=*BTS* ALERTGROUP="*Mains*" OR ALERTGROUP="DC VOLT*" OR SUMMARY="*Mains*" OR ALERTGROUP="Loss of supervision" OR ALERTGROUP = "NE Is Disconnected" OR ALERTGROUP ="*Low V*" OR SUMMARY="*Low V*" OR ALERTGROUP = "NodeB Unavail*"
+| rename NODE as site
+| sort 0 -_time
+| eval site = substr (site,1,4) | replace "NodeB Unavail*" with "NE Is Disconnected", "Loss of supervision" with "NE Is Disconnected" IN ALERTGROUP
+| eval site_alarm = site + ALERTGROUP
+| dedup site_alarm
+| lookup 3g_mobile_inventory.csv site OUTPUT description rnc network engineering_area longitude latitude
+| eval description = mvdedup (description), engineering_area = mvdedup (engineering_area),latitude = MVDEDUP (latitude), longitude = mvdedup (longitude)
+| replace "Huawei SRAN" with "3G", "Huawei 4G" with "4G"
+| search ORIGINALSEVERITY !=1 NOT site IN ($excludesite$), NOT engineering_area IN ($region$)
+| lookup Mobile_Battery_Reserve.csv site OUTPUT "Battery Reserve" AS Battery_Reserve
+| lookup Mobile_Site_Category_Priority.csv site OUTPUT "Dynamic Priority" AS Priority, "Regional Rank" AS Regional_Rank, Remarks
+| rename site AS Site, description AS Site_Name, network AS Technology, engineering_area AS Region
+| replace Bronze with 4.Bronze, Silver with 3.Silver, Gold with 2.Gold, Platinum with 1.Platinum, Battery* with "Low Volts"
+| eval description= "&lt;b&gt;".Site_Name + " - "+ Site ."&lt;/b&gt;" ."&lt;br&gt;"."Severity" + " - " + Priority. "&lt;br&gt;" ."Alert = " .ALERTGROUP . "&lt;br&gt;" ."Batt = " .Battery_Reserve . "&lt;br&gt;" ,
+	icon=case(ALERTGROUP LIKE "%Mains%","bolt",ALERTGROUP LIKE "%Low%","battery",ALERTGROUP LIKE "%Discon%","bullhorn",1=1,"question"),
+	markerColor=if(ALERTGROUP LIKE "%Mains%","blue",if(ALERTGROUP LIKE "%Low%","purple", if(ALERTGROUP LIKE "%Discon%","red","green"))),
+	markerPriority = if(ALERTGROUP LIKE "%Mains%","800",if(ALERTGROUP LIKE "%Low%","900",if(ALERTGROUP LIKE "%Discon%","1000","0"))),
+	markerSize = "17,37",
+    shadowSize = "20,36",
+    shadowAnchor = "17,32",
+    markerAnchor = "5,30",
+    markerType="svg",
+	layerDescription = ALERTGROUP
+| table latitude longitude Site description icon markerColor markerPriority markerSize shadowSize shadowAnchor markerAnchor markerType layerDescription Site_Name Region Priority  Battery_Reserve ALERTGROUP
+| fillnull
+| sort Priority</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">794</option>
+        <option name="leaflet_maps_app.leaflet_maps.allPopups">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.animate">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.autoFitAndZoom">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.autoFitAndZoomDelay">500</option>
+        <option name="leaflet_maps_app.leaflet_maps.bingMaps">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.bingMapsLabelLanguage">en-US</option>
+        <option name="leaflet_maps_app.leaflet_maps.bingMapsTileLayer">CanvasLight</option>
+        <option name="leaflet_maps_app.leaflet_maps.cluster">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.contextMenu">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.criticalThreshold">80</option>
+        <option name="leaflet_maps_app.leaflet_maps.defaultHeight">600</option>
+        <option name="leaflet_maps_app.leaflet_maps.drilldown">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.fullScreen">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.googlePlacesPosition">topleft</option>
+        <option name="leaflet_maps_app.leaflet_maps.googlePlacesSearch">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.googlePlacesZoomLevel">12</option>
+        <option name="leaflet_maps_app.leaflet_maps.layerControl">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.layerControlCollapsed">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.mapCenterLat">-39.5</option>
+        <option name="leaflet_maps_app.leaflet_maps.mapCenterLon">172.78</option>
+        <option name="leaflet_maps_app.leaflet_maps.mapCenterZoom">5.5</option>
+        <option name="leaflet_maps_app.leaflet_maps.mapTile">http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png</option>
+        <option name="leaflet_maps_app.leaflet_maps.maxClusterRadius">80</option>
+        <option name="leaflet_maps_app.leaflet_maps.maxSpiderfySize">100</option>
+        <option name="leaflet_maps_app.leaflet_maps.maxZoom">19</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureActiveColor">#00ff00</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureCompletedColor">#0066ff</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureIconPosition">topright</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureLocalization">en</option>
+        <option name="leaflet_maps_app.leaflet_maps.measurePrimaryAreaUnit">acres</option>
+        <option name="leaflet_maps_app.leaflet_maps.measurePrimaryLengthUnit">feet</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureSecondaryAreaUnit">sqmiles</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureSecondaryLengthUnit">miles</option>
+        <option name="leaflet_maps_app.leaflet_maps.measureTool">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.minZoom">5</option>
+        <option name="leaflet_maps_app.leaflet_maps.multiplePopups">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.pathColorList">#0003F0,#D43C29,darkgreen,0xe2d400,darkred,#23A378</option>
+        <option name="leaflet_maps_app.leaflet_maps.permanentTooltip">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeOneBgColor">#B5E28C</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeOneFgColor">#6ECC39</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeThreeBgColor">#FD9C73</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeThreeFgColor">#F18017</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeTwoBgColor">#F1D357</option>
+        <option name="leaflet_maps_app.leaflet_maps.rangeTwoFgColor">#F0C20C</option>
+        <option name="leaflet_maps_app.leaflet_maps.refreshInterval">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.scrollWheelZoom">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.showPathLines">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.singleMarkerMode">0</option>
+        <option name="leaflet_maps_app.leaflet_maps.spiderfyDistanceMultiplier">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.stickyTooltip">1</option>
+        <option name="leaflet_maps_app.leaflet_maps.warningThreshold">55</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+</form>
